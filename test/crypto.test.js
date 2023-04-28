@@ -24,37 +24,38 @@
 
 export { options } from "./expect.js";
 import { describe } from "./expect.js";
-import { hkdf, pbkdf2, generateKeyPair, ecdh } from "k6/x/crypto";
+import crypto from "k6/x/crypto"
 
 export default function () {
   describe("hkdf", (t) => {
-    const key = hkdf("sha256", "top secret", null, null, 64);
+    const key = crypto.hkdf("sha256", "top secret", null, null, 64);
     t.expect(key.byteLength).as("key length").toEqual(64);
   });
 
   describe("pbkdf2", (t) => {
-    const key = pbkdf2("top secret", null, 10000, 48, "sha256");
+    const key = crypto.pbkdf2("top secret", null, 10000, 48, "sha256");
+    console.log(key)
     t.expect(key.byteLength).as("key length").toEqual(48);
   });
 
   describe("generateKeyPair", (t) => {
-    const pair = generateKeyPair("ed25519");
+    const pair = crypto.generateKeyPair("ed25519");
     t.expect(pair.publicKey.byteLength).as("public key length").toEqual(32);
     t.expect(pair.privateKey.byteLength).as("private key length").toEqual(64);
   });
 
   describe("generateKeyPair with seed", (t) => {
-    const pair = generateKeyPair("ed25519", pbkdf2("top secret", null, 10000, 32, "sha256"));
+    const pair = crypto.generateKeyPair("ed25519", crypto.pbkdf2("top secret", null, 10000, 32, "sha256"));
     t.expect(pair.publicKey.byteLength).as("public key length").toEqual(32);
     t.expect(pair.privateKey.byteLength).as("private key length").toEqual(64);
   });
 
   describe("ecdh", (t) => {
-    const alice = generateKeyPair("ed25519");
-    const bob = generateKeyPair("ed25519");
+    const alice = crypto.generateKeyPair("ed25519");
+    const bob = crypto.generateKeyPair("ed25519");
 
-    const aliceShared = new Uint8Array(ecdh("ed25519", alice.privateKey, bob.publicKey));
-    const bobShared = new Uint8Array(ecdh("ed25519", bob.privateKey, alice.publicKey));
+    const aliceShared = new Uint8Array(crypto.ecdh("ed25519", alice.privateKey, bob.publicKey));
+    const bobShared = new Uint8Array(crypto.ecdh("ed25519", bob.privateKey, alice.publicKey));
     t.expect(aliceShared.every((val, i) => val == bobShared[i]))
       .as("shared secrets equals")
       .toBeTruthy();

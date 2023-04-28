@@ -23,7 +23,6 @@
 package crypto
 
 import ( // nolint:gci
-	"context"
 	"crypto/ed25519"
 	"crypto/md5" // nolint
 	"crypto/rand"
@@ -43,22 +42,23 @@ import ( // nolint:gci
 	x25519X "github.com/oasisprotocol/ed25519/extra/x25519"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/crypto/pbkdf2"
+	"github.com/sirupsen/logrus"
 )
 
-// Register the extensions on module initialization.
-func init() {
-	modules.Register("k6/x/crypto", New())
-}
+
 
 type KeyPair struct {
 	PrivateKey goja.ArrayBuffer `js:"privateKey"`
 	PublicKey  goja.ArrayBuffer `js:"publicKey"`
 }
 
-type Crypto struct{}
+type Crypto struct{
+	vu modules.VU
+}
 
-func New() *Crypto {
-	return &Crypto{}
+func newCrypto(vu modules.VU) *Crypto{
+
+	return &Crypto{vu:vu}
 }
 
 type hashInfo struct {
@@ -95,7 +95,7 @@ func bytes(in interface{}) ([]byte, error) {
 	return val, nil
 }
 
-func (c *Crypto) Hkdf(ctx context.Context, hash string, secretIn, saltIn, infoIn interface{}, keylen int) (interface{}, error) {
+func (c *Crypto) Hkdf(hash string, secretIn, saltIn, infoIn interface{}, keylen int) (interface{}, error) {
 	alg, ok := hashes[strings.ToLower(hash)]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedHash, hash)
@@ -128,37 +128,41 @@ func (c *Crypto) Hkdf(ctx context.Context, hash string, secretIn, saltIn, infoIn
 		return nil, err
 	}
 
-	return common.GetRuntime(ctx).NewArrayBuffer(b), nil
+	return c.vu.Runtime().NewArrayBuffer(b), nil
 }
 
-func (c *Crypto) Pbkdf2(ctx context.Context, passwordIn, saltIn interface{}, iter, keylen int, hash string) (interface{}, error) {
+func (c *Crypto) Pbkdf2(passwordIn, saltIn interface{}, iter, keylen int, hash string) (interface{}, error) {
 	alg, ok := hashes[strings.ToLower(hash)]
 	if !ok {
+		logrus.Info("Problem with hash")
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedHash, hash)
 	}
 
 	if keylen <= 0 {
+		logrus.Info("Problem with keylen")
 		return nil, fmt.Errorf("%w: %d", ErrInvalidKeyLen, keylen)
 	}
 
 	password, err := bytes(passwordIn)
 	if err != nil {
+		logrus.Info("Problem with passwordIn")
 		return nil, err
 	}
 
 	salt, err := bytes(saltIn)
 	if err != nil {
+		logrus.Info("Problem with saltIn")
 		return nil, err
 	}
 
 	b := pbkdf2.Key(password, salt, iter, keylen, alg.fn)
 
-	return common.GetRuntime(ctx).NewArrayBuffer(b), nil
+	return c.vu.Runtime().NewArrayBuffer(b), nil
 }
 
-func (c *Crypto) GenerateKeyPair(ctx context.Context, algorithm string, seedIn interface{}) (*KeyPair, error) {
+func (c *Crypto) GenerateKeyPair(algorithm string, seedIn interface{}) (*KeyPair, error) {
 	alg := strings.ToLower(algorithm)
-	rt := common.GetRuntime(ctx)
+	rt := c.vu.Runtime()
 
 	seed, err := bytes(seedIn)
 	if err != nil {
@@ -188,9 +192,9 @@ func (c *Crypto) GenerateKeyPair(ctx context.Context, algorithm string, seedIn i
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedAlgorithm, algorithm)
 }
 
-func (c *Crypto) Ecdh(ctx context.Context, algorithm string, privateKey, publicKey goja.ArrayBuffer) (interface{}, error) {
+func (c *Crypto) Ecdh(algorithm string, privateKey, publicKey goja.ArrayBuffer) (interface{}, error) {
 	alg := strings.ToLower(algorithm)
-	rt := common.GetRuntime(ctx)
+	rt := c.vu.Runtime()
 
 	if alg == "ed25519" {
 		priv := ed25519.PrivateKey(privateKey.Bytes())
